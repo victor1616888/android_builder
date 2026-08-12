@@ -1,6 +1,8 @@
 name: Android Build
 on:
   workflow_dispatch:
+env:
+  ACTIONS_RUNNER_FORCE_NODE_VERSION: 20
 
 jobs:
   build:
@@ -17,14 +19,30 @@ jobs:
 
       - id: get-project
         name: Get project name
-        run: echo "PROJECT=$(cat project-to-build)" >> $GITHUB_ENV
+        run: |
+          set -e
+          # 检查文件是否存在
+          if [ ! -f "project-to-build" ]; then
+            echo "ERROR: 文件 project-to-build 不存在！"
+            exit 1
+          fi
+          PROJECT_CONTENT=$(cat project-to-build)
+          echo "读取到仓库地址：$PROJECT_CONTENT"
+          if [ -z "$PROJECT_CONTENT" ]; then
+            echo "ERROR: project-to-build 文件为空！"
+            exit 1
+          fi
+          echo "PROJECT=$PROJECT_CONTENT" >> $GITHUB_ENV
 
       - name: Clone target Android project
-        run: git clone --depth=1 ${{ env.PROJECT }} project
+        run: |
+          set -e
+          echo "开始克隆仓库：${{ env.PROJECT }}"
+          git clone --depth=1 ${{ env.PROJECT }} project
+          echo "克隆完成"
 
-      # 升级cache到v5 支持Node24
       - name: Cache Gradle dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
@@ -34,13 +52,17 @@ jobs:
       - name: Build Debug APK
         working-directory: ./project
         run: |
-          if [ ! -f "gradlew" ]; then gradle wrapper; fi
+          set -e
+          if [ ! -f "gradlew" ]; then
+            echo "未找到gradlew，生成wrapper"
+            gradle wrapper
+          fi
           chmod +x gradlew
+          echo "开始编译 assembleDebug"
           ./gradlew assembleDebug --stacktrace
 
-      # 升级上传插件v5
       - name: Upload built APK
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: my-build-apk
           path: project/**/*.apk
