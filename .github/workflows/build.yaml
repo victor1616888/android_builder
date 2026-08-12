@@ -1,5 +1,4 @@
-name: android_build
-
+name: Android Build
 on:
   workflow_dispatch:
 
@@ -7,26 +6,44 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout the code
+      - name: Checkout current repo
         uses: actions/checkout@v7
-      - name: Set up JDK
+
+      # 修复核心：补充 distribution，使用 Android 标准 JDK17
+      - name: Set up JDK 17 for Android Gradle
         uses: actions/setup-java@v5
         with:
-          java-version: 5
-      - id: get-project
-        name: Get project name
-        run: echo "::set-output name=PROJECT::$(cat project-to-build)"
-      - name: Clone project
-        run: git clone --depth=1 ${{ steps.get-project.outputs.PROJECT }} project
-      - name: Build the app
+          distribution: 'temurin'  # 必须配置，解决 distribution input is required
+          java-version: '17'      # Android 构建标准JDK，5是无效版本
+
+      # 修复废弃的 set-output 写法
+      - name: Get target project git address
+        id: get-project
+        run: |
+          echo "PROJECT=$(cat project-to-build)" >> $GITHUB_ENV
+
+      - name: Clone target android project
+        run: git clone --depth=1 ${{ env.PROJECT }} project
+
+      # Gradle 缓存加速构建（可选但推荐）
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('project/**/*.gradle*', 'project/gradle-wrapper.properties') }}
+
+      - name: Build Android Debug APK
         working-directory: ./project
         run: |
+          # 生成gradle wrapper
           if [ ! -f "gradlew" ]; then gradle wrapper; fi
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
-      - name: Upload APK
+
+      - name: Upload built APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: my-build-apk
-          path: ./**/*.apk
-
+          path: project/**/*.apk
